@@ -40,11 +40,9 @@ class OrderWorkflowRuntime:
         for attempt in range(1, self.max_attempts + 1):
             trace.append(f"fulfillment:attempt={attempt}")
             try:
-                # Intentional bug: the timeout is capped too aggressively, so a valid
-                # configured timeout never takes effect during normal downstream latency.
                 await asyncio.wait_for(
                     self.fulfillment.dispatch(order, plan, inventory),
-                    timeout=min(self.handoff_timeout_seconds, 0.2),
+                    timeout=self.handoff_timeout_seconds,
                 )
                 trace.append("fulfillment:success")
                 return WorkflowResult(
