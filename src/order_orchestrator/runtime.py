@@ -23,7 +23,7 @@ class OrderWorkflowRuntime:
 
     async def process_order(self, order: OrderRequest) -> WorkflowResult:
         trace = ["planner:started"]
-        plan = self.planner.plan(order)
+        plan = await self.planner.plan(order)
         trace.append(f"planner:route={plan.route_name}")
 
         inventory = self.inventory.reserve(order, plan)

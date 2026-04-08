@@ -1,14 +1,29 @@
 from __future__ import annotations
 
-import asyncio
-
+from .llm_client import DemoLLMClient
 from .models import FulfillmentReceipt, InventoryDecision, OrderRequest, RoutePlan
 
 
 class PlannerAgent:
-    def plan(self, order: OrderRequest) -> RoutePlan:
-        route_name = "priority-route" if order.customer_tier.lower() == "gold" else "standard-route"
-        return RoutePlan(route_name=route_name, requires_manual_review=False)
+    def __init__(self, llm: DemoLLMClient | None = None) -> None:
+        self.llm = llm or DemoLLMClient()
+
+    async def plan(self, order: OrderRequest) -> RoutePlan:
+        prompt = (
+            "Decide the order route for a customer tier and destination.\n"
+            f"customer_tier={order.customer_tier}\n"
+            f"destination_region={order.destination_region}\n"
+            f"item_count={len(order.items)}"
+        )
+        response = await self.llm.complete(
+            task="planner_route",
+            prompt=prompt,
+            metadata={"order_id": order.order_id},
+        )
+        return RoutePlan(
+            route_name=response["route_name"],
+            requires_manual_review=response.get("requires_manual_review", False),
+        )
 
 
 class InventoryAgent:
@@ -18,13 +33,25 @@ class InventoryAgent:
 
 
 class FulfillmentAgent:
-    def __init__(self, dispatch_delay_seconds: float = 0.35) -> None:
-        self.dispatch_delay_seconds = dispatch_delay_seconds
+    def __init__(self, llm: DemoLLMClient | None = None, downstream_delay_seconds: float = 0.35) -> None:
+        self.llm = llm or DemoLLMClient()
+        self.downstream_delay_seconds = downstream_delay_seconds
 
     async def dispatch(self, order: OrderRequest, plan: RoutePlan, inventory: InventoryDecision) -> FulfillmentReceipt:
-        await asyncio.sleep(self.dispatch_delay_seconds)
+        prompt = (
+            "Create a fulfillment dispatch decision.\n"
+            f"order_id={order.order_id}\n"
+            f"route_name={plan.route_name}\n"
+            f"warehouse_id={inventory.warehouse_id}"
+        )
+        response = await self.llm.complete(
+            task="fulfillment_dispatch",
+            prompt=prompt,
+            metadata={"order_id": order.order_id},
+            artificial_delay_seconds=self.downstream_delay_seconds,
+        )
         return FulfillmentReceipt(
-            dispatch_id=f"dispatch-{order.order_id}",
-            route_name=plan.route_name,
-            warehouse_id=inventory.warehouse_id,
+            dispatch_id=response["dispatch_id"],
+            route_name=response["route_name"],
+            warehouse_id=response["warehouse_id"],
         )
